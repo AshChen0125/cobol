@@ -1,0 +1,506 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. AddressSplitterFinal.
+
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT IN-FILE ASSIGN TO 'input_ce.csv'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT OUT-FILE ASSIGN TO 'test_1014.csv' 
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT KEY-FILE ASSIGN TO 'keywords.txt'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT LOC-FILE ASSIGN TO 'location.txt'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT UNMATCH-FILE ASSIGN TO 'unmatched.txt'
+               ORGANIZATION IS LINE SEQUENTIAL.
+           SELECT COUNTRY-FILE ASSIGN TO 'country.txt'
+               ORGANIZATION IS LINE SEQUENTIAL. 
+           SELECT CITY-FILE ASSIGN TO 'city.txt'
+               ORGANIZATION IS LINE SEQUENTIAL. 
+
+       DATA DIVISION.
+       FILE SECTION.
+       FD  IN-FILE.
+       01  IN-REC      PIC X(200).
+
+       FD  OUT-FILE.
+       01  OUT-REC     PIC X(5000).
+
+       FD  KEY-FILE.
+       01  KEY-REC     PIC X(50).
+
+       FD  LOC-FILE.
+       01  LOC-REC     PIC X(100).
+
+       FD  UNMATCH-FILE.
+       01  UNMATCH-REC PIC X(200).
+
+       FD  COUNTRY-FILE.
+       01  COUNTRY-REC     PIC X(100).
+
+       FD  CITY-FILE.
+       01  CITY-REC     PIC X(100).
+
+       WORKING-STORAGE SECTION.
+       01 EOF-FLAG       PIC X VALUE 'N'.
+       01 KEY-FILE-EOF   PIC X VALUE 'N'.
+       01 LOC-FILE-EOF   PIC X VALUE 'N'.
+       01 CITY-FILE-EOF   PIC X VALUE 'N'.
+       01 COUNTRY-FILE-EOF   PIC X VALUE 'N'.
+       01 HAS-MATCH      PIC X VALUE 'N'.
+       01 FOUND          PIC X VALUE 'N'.
+       01 LOC-FOUND      PIC X VALUE 'N'.
+
+       01 REMAINING      PIC X(200).
+       01 FIELD-FILL     PIC X(40).
+       01 TOKEN          PIC X(40).
+       01 TEMP-FIELD     PIC X(50).
+       01 TMP-POS        PIC 9(4).
+       01 TMP-POS2       PIC 9(4).
+       01  PTR          PIC 9(4).
+       01  IDX          PIC 9(4).
+       01  POS          PIC 9(4).
+       01 FIELD-LEN       PIC 9(4).
+       01 TEMP-LEN       PIC 9(4).
+       01 KEY-LEN       PIC 9(4).
+       01 TEST-FIELD     PIC X(50).
+
+       01 RM             PIC X(50) .
+       01 F              PIC X(50) .
+       01 BUILDING         PIC X(50) .
+       01 ALY            PIC X(50) .
+       01 LN_LANE        PIC X(50) .
+       01 SEC            PIC X(50) .
+       01 STREET_ST      PIC X(50) .
+       01 AVENUE_AVE     PIC X(50) .
+       01 WAY            PIC X(50) .
+       01 BOULEVARD_BLVD PIC X(50) .
+       01 ROAD_RD        PIC X(50) .
+       01 DRIVE_DR       PIC X(50) .
+       01 TOWN           PIC X(50) .
+       01 DISTRICT       PIC X(50) .
+       01 CITY           PIC X(50) .
+       01 STATE          PIC X(50) .
+       01 PROVINCE       PIC X(50) .
+       01 COUNTY         PIC X(50) .
+       01 ZIP            PIC X(50) .
+       01 COUNTRY         PIC X(50) .
+       01 NUMBER-FILED   PIC X(50) .
+       01 LOCATION1      PIC X(50) .
+       01 LOCATION2      PIC X(50) .
+       01 LOCATION3      PIC X(50) .
+       01 LOCATION4      PIC X(50) .
+       01 LOCATION5      PIC X(50) .
+       01 LOCATION6      PIC X(50) .
+       01 OTHER-FIELD    PIC X(200) .
+       01 CHINESE        PIC X(250).
+       01 ORIGINAL       PIC X(250).
+
+       01 KEY-COUNT      PIC 9(4) VALUE 0.
+       01 LOC-COUNT      PIC 9(4) VALUE 0.
+       01 CITY-COUNT      PIC 9(4) VALUE 0.
+       01 COUNTRY-COUNT      PIC 9(4) VALUE 0.
+
+       01 KEYWORDS.
+           05 KEY-ENTRY OCCURS 200 TIMES PIC X(50) .
+       01 LOCATIONS.
+           05 LOC-ITEM OCCURS 500 TIMES PIC X(100) .
+       01 COUNTRYS.
+           05 COUNTRY-ITEM OCCURS 500 TIMES PIC X(100) .    
+       01 CITYS.
+           05 CITY-ITEM OCCURS 500 TIMES PIC X(100) . 
+       *> 拆分後的欄位陣列
+       01 FIELD-ARRAY.
+           05 FIELD-ENTRY OCCURS 200 TIMES PIC X(50) VALUE SPACES.
+       01 FIELD-COUNT PIC 9(4) VALUE 0.
+
+       01 ZIP-CHECK-LEN    PIC 9(4).
+       01 FIRST-CHAR   PIC X.
+       01 LAST-CHAR    PIC X.
+       01 NUM-PREFIX   PIC 9(10) VALUE ZEROS.
+       01 NUM-SUFFIX   PIC 9(10) VALUE ZEROS.
+       01 NUM-END-POS  PIC 9(4).
+       01 ZIP-CHECK-RESULT    PIC X(10).
+       01 ZIP-CHECK-FIELD      PIC X(50) .
+       01  ZIP-IDX          PIC 9(4).
+       01  ZIP-CHECK-IDX          PIC 9(4).
+
+
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           *> 讀 KEYWORD
+           OPEN INPUT KEY-FILE
+           PERFORM UNTIL KEY-FILE-EOF = 'Y'
+               READ KEY-FILE
+                   AT END MOVE 'Y' TO KEY-FILE-EOF
+                   NOT AT END
+                       ADD 1 TO KEY-COUNT
+                       MOVE FUNCTION TRIM(KEY-REC) TO KEY-ENTRY
+                       (KEY-COUNT)
+               END-READ
+           END-PERFORM
+           CLOSE KEY-FILE
+
+           *> 讀 CITY
+           OPEN INPUT CITY-FILE
+           PERFORM UNTIL CITY-FILE-EOF = 'Y'
+               READ CITY-FILE
+                   AT END MOVE 'Y' TO CITY-FILE-EOF
+                   NOT AT END
+                       ADD 1 TO CITY-COUNT
+                       MOVE FUNCTION TRIM(CITY-REC) TO CITY-ITEM(
+                        CITY-COUNT)
+               END-READ
+           END-PERFORM
+           CLOSE CITY-FILE
+
+           *> 讀 COUNTRY
+           OPEN INPUT COUNTRY-FILE
+           PERFORM UNTIL COUNTRY-FILE-EOF = 'Y'
+               READ COUNTRY-FILE
+                   AT END MOVE 'Y' TO COUNTRY-FILE-EOF
+                   NOT AT END
+                       ADD 1 TO COUNTRY-COUNT
+                       MOVE FUNCTION TRIM(COUNTRY-REC) TO COUNTRY-ITEM(
+                        COUNTRY-COUNT)
+               END-READ
+           END-PERFORM
+           CLOSE COUNTRY-FILE
+
+           *> 讀 LOCATION
+           OPEN INPUT LOC-FILE
+           PERFORM UNTIL LOC-FILE-EOF = 'Y'
+               READ LOC-FILE
+                   AT END MOVE 'Y' TO LOC-FILE-EOF
+                   NOT AT END
+                       ADD 1 TO LOC-COUNT
+                       MOVE FUNCTION TRIM(LOC-REC) TO LOC-ITEM(
+                        LOC-COUNT)
+               END-READ
+           END-PERFORM
+           CLOSE LOC-FILE
+
+           OPEN INPUT IN-FILE OUTPUT OUT-FILE UNMATCH-FILE
+
+           *> CSV 首行
+           MOVE SPACES TO OUT-REC
+           STRING 
+               "Chinese;Original;Room/RM;Floor/F;Building;NO;ALY;"
+               "LN/Lane;Sec;"
+               "Street/St;Avenue/Ave;Way;Boulevard/Blvd;Road/Rd;"
+               "Drive/Dr;Town;Dist/District;City;County;Province;State;"
+               "Zip;Country;Location1;Location2;Location3;Location4"
+               ";Location5;Location6;Other"
+               DELIMITED BY SIZE INTO OUT-REC
+           WRITE OUT-REC
+
+           *> 跳過首行
+           READ IN-FILE AT END MOVE 'Y' TO EOF-FLAG END-READ
+
+           *> 處理每一行
+           PERFORM UNTIL EOF-FLAG = 'Y'
+               READ IN-FILE
+                   AT END MOVE 'Y' TO EOF-FLAG
+                   NOT AT END
+                       PERFORM PROCESS-RECORD
+               END-READ
+           END-PERFORM
+
+           CLOSE IN-FILE OUT-FILE UNMATCH-FILE
+           STOP RUN.
+
+       PROCESS-RECORD.
+           MOVE 'N' TO HAS-MATCH
+           MOVE SPACES TO RM F ALY LN_LANE SEC STREET_ST AVENUE_AVE
+               WAY BOULEVARD_BLVD ROAD_RD DRIVE_DR TOWN DISTRICT CITY
+               STATE PROVINCE COUNTY ZIP NUMBER-FILED
+               LOCATION1 LOCATION2 LOCATION3 LOCATION4 LOCATION5 
+               LOCATION6 COUNTRY
+               OTHER-FIELD CHINESE ORIGINAL
+       
+           UNSTRING IN-REC DELIMITED BY ';'
+               INTO CHINESE, ORIGINAL
+       
+           MOVE ORIGINAL TO REMAINING
+       
+           *> 以逗號拆段落
+           MOVE 1 TO PTR
+           MOVE 1 TO IDX
+           PERFORM UNTIL PTR > FUNCTION LENGTH(REMAINING) OR IDX > 30
+               UNSTRING REMAINING DELIMITED BY "," 
+                   INTO FIELD-ENTRY(IDX)
+                   WITH POINTER PTR
+               END-UNSTRING           
+               ADD 1 TO IDX
+           END-PERFORM
+           
+           SUBTRACT 1 FROM IDX GIVING FIELD-COUNT
+           DISPLAY "IDX: "IDX
+           DISPLAY "FIELD-COUNT: "FIELD-COUNT
+
+           *> Keyword 比對
+           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > FIELD-COUNT
+               MOVE FUNCTION LENGTH(FIELD-ENTRY(IDX)) TO FIELD-LEN
+               MOVE FUNCTION TRIM(FIELD-ENTRY(IDX)) TO TEMP-FIELD
+               MOVE FUNCTION LENGTH(TEMP-FIELD) TO TEMP-LEN
+
+
+               IF TEMP-FIELD NOT = SPACES AND TEMP-LEN >= 1
+                   PERFORM VARYING POS FROM 1 BY 1 UNTIL POS > TEMP-LEN
+                       PERFORM VARYING TMP-POS FROM 1 BY 1 UNTIL 
+                       TMP-POS > KEY-COUNT
+                       *>DISPLAY "KEY-ENTRY: " KEY-ENTRY(TMP-POS)
+                       MOVE FUNCTION LENGTH(FUNCTION TRIM
+                              (KEY-ENTRY(TMP-POS))) TO KEY-LEN
+
+                           IF FUNCTION UPPER-CASE(TEMP-FIELD
+                           (POS: KEY-LEN)
+                           ) = FUNCTION UPPER-CASE(FUNCTION TRIM
+                              (KEY-ENTRY(TMP-POS)))
+                               MOVE 'Y' TO HAS-MATCH
+                               PERFORM OUTPUT-KEYWORD
+                               *> 把已匹配的 Keyword 從欄位中刪掉
+                               MOVE SPACE TO 
+                               FIELD-ENTRY(IDX)
+                               EXIT PERFORM
+                           END-IF
+                       END-PERFORM
+                   END-PERFORM
+               END-IF
+           END-PERFORM
+
+           *> Location 比對
+           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > FIELD-COUNT
+               IF FIELD-ENTRY(IDX) NOT = SPACES
+                   *>CITY
+                   PERFORM VARYING TMP-POS FROM 1 BY 1 UNTIL TMP-POS > 
+                   CITY-COUNT
+                       IF FUNCTION UPPER-CASE(FUNCTION TRIM(FIELD-ENTRY
+                       (IDX))) =
+                          FUNCTION UPPER-CASE(FUNCTION TRIM(CITY-ITEM(
+                           TMP-POS)))
+                           MOVE FIELD-ENTRY(IDX) TO FIELD-FILL
+                           MOVE FUNCTION TRIM(FIELD-ENTRY(IDX)) TO CITY
+                           MOVE SPACES TO FIELD-ENTRY(IDX)
+                           MOVE 'Y' TO HAS-MATCH
+                           EXIT PERFORM
+                       END-IF
+                   END-PERFORM
+                   *>COUNTRY
+                   PERFORM VARYING TMP-POS FROM 1 BY 1 UNTIL TMP-POS > 
+                   COUNTRY-COUNT
+                       IF FUNCTION UPPER-CASE(FUNCTION TRIM(FIELD-ENTRY
+                       (IDX))) =
+                          FUNCTION UPPER-CASE(FUNCTION TRIM(
+                           COUNTRY-ITEM(TMP-POS)))
+                           MOVE FUNCTION TRIM(FIELD-ENTRY(IDX)) 
+                           TO COUNTRY
+                           MOVE SPACES TO FIELD-ENTRY(IDX)
+                           MOVE 'Y' TO HAS-MATCH
+                           EXIT PERFORM
+                       END-IF
+                   END-PERFORM
+
+                   PERFORM VARYING TMP-POS FROM 1 BY 1 UNTIL TMP-POS >
+                    LOC-COUNT
+                       IF FUNCTION TRIM(FIELD-ENTRY(IDX)) =
+                          FUNCTION TRIM(LOC-ITEM(TMP-POS))
+                           MOVE FIELD-ENTRY(IDX) TO FIELD-FILL
+                           PERFORM OUTPUT-LOCATION
+                           MOVE SPACES TO FIELD-ENTRY(IDX)
+                           MOVE 'Y' TO HAS-MATCH
+                           EXIT PERFORM
+                       END-IF
+                   END-PERFORM
+               END-IF
+           END-PERFORM
+
+           *> 其他未匹配欄位
+           PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > FIELD-COUNT
+               IF FUNCTION TRIM(FIELD-ENTRY(IDX)) NOT = SPACES
+                   IF FUNCTION TRIM(OTHER-FIELD) NOT = SPACES
+                       STRING FUNCTION TRIM(OTHER-FIELD) "," FUNCTION 
+                       TRIM(FIELD-ENTRY(IDX))
+                              DELIMITED BY SIZE
+                              INTO OTHER-FIELD
+                       END-STRING
+                   ELSE
+                       MOVE FUNCTION TRIM(FIELD-ENTRY(IDX)) TO 
+                       OTHER-FIELD
+                   END-IF
+               END-IF
+           END-PERFORM
+
+           *> 判斷 unmatched
+           IF HAS-MATCH = 'Y'
+               PERFORM OUTPUT-COLUMN
+           ELSE
+               MOVE IN-REC TO UNMATCH-REC
+               WRITE UNMATCH-REC
+           END-IF.
+
+       OUTPUT-KEYWORD.
+           EVALUATE FUNCTION UPPER-CASE(KEY-ENTRY(TMP-POS))
+               WHEN 'RM.' MOVE TEMP-FIELD TO RM
+               WHEN 'ROOM' MOVE TEMP-FIELD TO RM
+               WHEN 'TOWER' MOVE TEMP-FIELD TO BUILDING
+               WHEN 'F.' MOVE TEMP-FIELD TO F
+               WHEN 'FLOOR' MOVE TEMP-FIELD TO F
+               WHEN 'NO.' MOVE TEMP-FIELD TO NUMBER-FILED
+               WHEN 'ALY.' MOVE TEMP-FIELD TO ALY
+               WHEN 'LN.' MOVE TEMP-FIELD TO LN_LANE
+               WHEN 'LANE' MOVE TEMP-FIELD TO LN_LANE
+               WHEN 'SEC.' MOVE TEMP-FIELD TO SEC
+               WHEN 'SECTION' MOVE TEMP-FIELD TO SEC
+               WHEN 'STREET' MOVE TEMP-FIELD TO STREET_ST
+               WHEN 'ST.' MOVE TEMP-FIELD TO STREET_ST
+               WHEN 'AVENUE' MOVE TEMP-FIELD TO AVENUE_AVE
+               WHEN 'AVE.' MOVE TEMP-FIELD TO AVENUE_AVE
+               WHEN 'WAY' MOVE TEMP-FIELD TO WAY
+               WHEN 'BOULEVARD' MOVE TEMP-FIELD TO BOULEVARD_BLVD
+               WHEN 'BLVD.' MOVE TEMP-FIELD TO BOULEVARD_BLVD
+               WHEN 'ROAD' MOVE TEMP-FIELD TO ROAD_RD
+               WHEN 'RD.' MOVE TEMP-FIELD TO ROAD_RD
+               WHEN 'DRIVE' MOVE TEMP-FIELD TO DRIVE_DR
+               WHEN 'DR.' MOVE TEMP-FIELD TO DRIVE_DR
+               WHEN 'DIST.' MOVE TEMP-FIELD TO DISTRICT
+               WHEN 'DISTRICT' MOVE TEMP-FIELD TO DISTRICT
+               WHEN 'PARK' MOVE TEMP-FIELD TO DISTRICT
+               WHEN 'AREA' MOVE TEMP-FIELD TO DISTRICT
+               WHEN 'TOWN' MOVE TEMP-FIELD TO TOWN
+               WHEN 'TOWNSHIP' MOVE TEMP-FIELD TO TOWN
+               WHEN 'CITY' MOVE TEMP-FIELD TO CITY
+               WHEN 'STATE' MOVE TEMP-FIELD TO STATE
+               WHEN 'PROVINCE' MOVE TEMP-FIELD TO PROVINCE
+               WHEN 'COUNTY' MOVE TEMP-FIELD TO COUNTY
+               WHEN 'ZIP' MOVE TEMP-FIELD TO ZIP
+               WHEN 'POSTAL' MOVE TEMP-FIELD TO ZIP
+               WHEN OTHER CONTINUE
+           END-EVALUATE.
+
+       OUTPUT-LOCATION.
+           EVALUATE TRUE
+               WHEN LOCATION1 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION1
+               WHEN LOCATION2 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION2
+               WHEN LOCATION3 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION3
+               WHEN LOCATION4 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION4
+               WHEN LOCATION5 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION5
+               WHEN LOCATION6 = SPACES
+                   MOVE FUNCTION TRIM(FIELD-FILL) TO LOCATION6
+           END-EVALUATE.
+           PERFORM CHECK-ZIP.
+
+       OUTPUT-COLUMN.
+           MOVE SPACES TO OUT-REC
+           STRING 
+           FUNCTION TRIM(CHINESE) ";"FUNCTION TRIM(ORIGINAL) ";"
+           FUNCTION TRIM(RM) ";" FUNCTION TRIM(F)";" 
+           FUNCTION TRIM(BUILDING)";" 
+           FUNCTION TRIM(NUMBER-FILED) ";"
+           FUNCTION TRIM(ALY) ";"
+                  FUNCTION TRIM(LN_LANE) ";" FUNCTION 
+                  TRIM(SEC) ";" FUNCTION TRIM(STREET_ST) ";"
+                  FUNCTION TRIM(AVENUE_AVE) ";" FUNCTION 
+                  TRIM(WAY) ";" FUNCTION 
+                  TRIM(BOULEVARD_BLVD) ";"
+                  FUNCTION TRIM(ROAD_RD) ";" FUNCTION 
+                  TRIM(DRIVE_DR) ";" FUNCTION TRIM(TOWN) ";"
+                  FUNCTION TRIM(DISTRICT) ";" FUNCTION 
+                  TRIM(CITY) ";"FUNCTION 
+                  TRIM(COUNTY) ";" FUNCTION TRIM(PROVINCE) ";"
+                  FUNCTION TRIM(STATE) ";"
+                  FUNCTION TRIM(ZIP) ";"FUNCTION TRIM(COUNTRY) ";" 
+                  FUNCTION TRIM(LOCATION1) ";" FUNCTION 
+                  TRIM(LOCATION2) ";" FUNCTION 
+                  TRIM(LOCATION3) ";"
+                  FUNCTION TRIM(LOCATION4) ";" FUNCTION 
+                  TRIM(LOCATION5) ";" FUNCTION 
+                  TRIM(LOCATION6) ";"
+                  FUNCTION TRIM(OTHER-FIELD) DELIMITED BY
+                   SIZE INTO OUT-REC
+           WRITE OUT-REC.
+       
+       CHECK-ZIP.
+           IF FUNCTION LENGTH(FUNCTION TRIM(ZIP)) = 0
+               EVALUATE TRUE
+                   WHEN STATE NOT = SPACES
+                       MOVE FUNCTION TRIM(STATE) TO 
+                       ZIP-CHECK-FIELD
+                   WHEN PROVINCE NOT = SPACES
+                       MOVE FUNCTION TRIM(PROVINCE) TO ZIP-CHECK-FIELD
+                   WHEN COUNTY NOT = SPACES
+                       MOVE FUNCTION TRIM(COUNTY) TO ZIP-CHECK-FIELD
+                   WHEN CITY NOT = SPACES
+                       MOVE FUNCTION TRIM(CITY) TO ZIP-CHECK-FIELD
+                   WHEN TOWN NOT = SPACES
+                       MOVE FUNCTION TRIM(TOWN) TO ZIP-CHECK-FIELD
+                   WHEN DISTRICT NOT = SPACES
+                       MOVE FUNCTION TRIM(DISTRICT) TO ZIP-CHECK-FIELD 
+                   WHEN OTHER
+                       MOVE SPACES TO ZIP-CHECK-FIELD
+               END-EVALUATE
+
+               MOVE SPACE TO ZIP-CHECK-RESULT
+
+               PERFORM VARYING ZIP-IDX FROM FUNCTION LENGTH(
+                ZIP-CHECK-FIELD) BY -1
+                       UNTIL ZIP-IDX < 1
+                   IF ZIP-CHECK-FIELD(ZIP-IDX:1) NUMERIC
+                       *> 將數字加到結果前面
+                       STRING ZIP-CHECK-FIELD(ZIP-IDX:1) DELIMITED 
+                       BY SIZE
+                              ZIP-CHECK-RESULT DELIMITED BY SIZE
+                              INTO ZIP-CHECK-RESULT
+                       END-STRING
+                   ELSE
+                       EXIT PERFORM
+                   END-IF
+               END-PERFORM
+
+               MOVE ZIP-CHECK-RESULT TO ZIP
+
+           END-IF
+           .
+
+       CHECK-NO.
+           IF ZIP = SPACES AND FUNCTION LENGTH(ZIP) = 0
+               EVALUATE TRUE
+                   WHEN STREET_ST NOT = SPACES
+                       MOVE FUNCTION TRIM(STREET_ST) TO ZIP-CHECK-FIELD
+                   WHEN AVENUE_AVE NOT = SPACES
+                       MOVE FUNCTION TRIM(AVENUE_AVE) TO ZIP-CHECK-FIELD
+                   WHEN ROAD_RD NOT = SPACES
+                       MOVE FUNCTION TRIM(ROAD_RD) TO ZIP-CHECK-FIELD
+                   WHEN BOULEVARD_BLVD NOT = SPACES
+                       MOVE FUNCTION TRIM(BOULEVARD_BLVD) TO 
+                       ZIP-CHECK-FIELD
+                   WHEN WAY NOT = SPACES
+                       MOVE FUNCTION TRIM(WAY) TO ZIP-CHECK-FIELD
+                   WHEN DRIVE_DR NOT = SPACES
+                       MOVE FUNCTION TRIM(DRIVE_DR) TO ZIP-CHECK-FIELD
+                   WHEN OTHER
+                       MOVE SPACES TO ZIP-CHECK-FIELD
+               END-EVALUATE
+
+               PERFORM VARYING ZIP-IDX FROM FUNCTION LENGTH(
+                ZIP-CHECK-FIELD) BY -1
+                       UNTIL ZIP-IDX < 1
+                   IF ZIP-CHECK-FIELD(ZIP-IDX:1) NUMERIC
+                       STRING ZIP-CHECK-FIELD(ZIP-IDX:1) 
+                       ZIP-CHECK-RESULT
+                              DELIMITED BY SIZE
+                              INTO ZIP-CHECK-RESULT
+                       END-STRING
+                   ELSE
+                       EXIT PERFORM
+                   END-IF
+               END-PERFORM
+               MOVE ZIP-CHECK-RESULT TO ZIP
+           END-IF
+           .
