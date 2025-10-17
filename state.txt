@@ -100,13 +100,3 @@ Wyoming
 WY
 District of Columbia
 DC
-Puerto Rico
-PR
-Guam
-GU
-American Samoa
-AS
-Northern Mariana Islands
-MP
-U.S. Virgin Islands
-VI
