@@ -453,8 +453,12 @@
                  PERFORM CHECK-ZIP
                  MOVE TEMP-FIELD TO CITY
                WHEN 'STATE' 
-                 PERFORM CHECK-ZIP
-                 MOVE TEMP-FIELD TO STATE
+                 IF FUNCTION TRIM(TEMP-FIELD) = 'United States' 
+                    MOVE TEMP-FIELD TO COUNTRY
+                 ELSE
+                    PERFORM CHECK-ZIP
+                    MOVE TEMP-FIELD TO STATE
+                 END-IF
                WHEN 'PROVINCE' 
                  PERFORM CHECK-ZIP
                  MOVE TEMP-FIELD TO PROVINCE
